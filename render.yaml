@@ -1,0 +1,11 @@
+# Render Blueprint. The database lives on Neon (free Postgres): set DATABASE_URL in the Render dashboard.
+services:
+  - type: web
+    name: followup-tracker
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    autoDeployTrigger: checksPass   # deploy only when GitHub CI is green
+    envVars:
+      - key: DATABASE_URL
+        sync: false
