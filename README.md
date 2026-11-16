@@ -48,7 +48,7 @@ make dev
 - CI (`.github/workflows/ci.yml`): tests + Docker build on every pull request and on `main`.
 - CD: Render deploys `main` automatically once checks pass (`render.yaml`).
 - Rollback and setup: [docs/deployment.md](docs/deployment.md).
-- Live URL: _add the Render URL here after the first deploy._
+- Live URL: [https://followup-tracker.onrender.com/](https://followup-tracker.onrender.com/)
 
 ## Observability
 
