@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Follow-up Tracker</title>
+<style>
+  :root { --bg:#f8fafc; --fg:#0f172a; --card:#fff; --muted:#64748b; --accent:#0ea5e9; --warn:#dc2626; --border:#e2e8f0; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0b1120; --fg:#f1f5f9; --card:#1e293b; --muted:#94a3b8; --border:#334155; } }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--fg); margin: 0; padding: 1rem; max-width: 760px; margin-inline: auto; }
+  h1 { font-size: 1.4rem; } h2 { font-size: 1.1rem; margin-top: 1.5rem; }
+  form, .item { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: .8rem; margin-bottom: .6rem; }
+  form { display: grid; gap: .5rem; grid-template-columns: 1fr 1fr; }
+  form .full { grid-column: 1 / -1; }
+  input, select, textarea, button { font: inherit; padding: .45rem; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--fg); }
+  button { cursor: pointer; background: var(--accent); color: #fff; border: none; }
+  button.secondary { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+  .item { display: flex; justify-content: space-between; gap: .5rem; align-items: center; flex-wrap: wrap; }
+  .item.due { border-left: 4px solid var(--warn); }
+  .meta { color: var(--muted); font-size: .85rem; }
+  .badge { font-size: .75rem; padding: .1rem .4rem; border-radius: 4px; border: 1px solid var(--border); }
+  .actions { display: flex; gap: .4rem; }
+  .tabs { display: flex; gap: .5rem; margin: 1rem 0 .5rem; }
+  .tabs button { background: transparent; color: var(--fg); border: 1px solid var(--border); }
+  .tabs button.active { background: var(--accent); color: #fff; }
+  #error { color: var(--warn); }
+</style>
+</head>
+<body>
+<h1>📬 Follow-up Tracker</h1>
+<p class="meta">Applications and contacts, with a follow-up reminder so nothing slips.</p>
+<p id="error" role="alert"></p>
+
+<form id="form">
+  <input class="full" name="name" placeholder="Name / job title *" required maxlength="200">
+  <input name="organization" placeholder="Organization" maxlength="200">
+  <select name="kind"><option value="application">Application</option><option value="contact">Contact</option></select>
+  <select name="status">
+    <option value="to_contact">To contact</option><option value="waiting">Waiting</option>
+    <option value="interview">Interview</option><option value="accepted">Accepted</option>
+    <option value="rejected">Rejected</option><option value="closed">Closed</option>
+  </select>
+  <input name="followup_days" type="number" min="1" max="365" value="7" title="Follow up every N days">
+  <textarea class="full" name="notes" placeholder="Notes" rows="2"></textarea>
+  <button class="full" type="submit">Add</button>
+</form>
+
+<div class="tabs">
+  <button id="tab-due" class="active">Due today</button>
+  <button id="tab-all">All</button>
+</div>
+<div id="list"></div>
+
+<script>
+let dueOnly = true;
+const $ = (s) => document.querySelector(s);
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try { const b = await res.json(); detail = typeof b.detail === "string" ? b.detail : JSON.stringify(b.detail); } catch {}
+    throw new Error(detail);
+  }
+  return res.status === 204 ? null : res.json();
+}
+
+function esc(s) { const d = document.createElement("div"); d.textContent = s ?? ""; return d.innerHTML; }
+
+async function load() {
+  $("#error").textContent = "";
+  try {
+    const items = await api("/api/entries" + (dueOnly ? "?due_only=true" : ""));
+    $("#list").innerHTML = items.length ? items.map((e) => `
+      <div class="item ${e.due ? "due" : ""}">
+        <div>
+          <strong>${esc(e.name)}</strong> <span class="badge">${esc(e.kind)}</span> <span class="badge">${esc(e.status)}</span>
+          <div class="meta">${esc(e.organization)} · last: ${e.last_contact ?? "never"} · next: ${e.next_followup ?? "now"}</div>
+          ${e.notes ? `<div class="meta">${esc(e.notes)}</div>` : ""}
+        </div>
+        <div class="actions">
+          <button data-contacted="${e.id}">Contacted today</button>
+          <button class="secondary" data-delete="${e.id}">Delete</button>
+        </div>
+      </div>`).join("") : '<p class="meta">Nothing to show.</p>';
+  } catch (err) { $("#error").textContent = err.message; }
+}
+
+$("#form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const f = Object.fromEntries(new FormData(ev.target));
+  f.followup_days = Number(f.followup_days);
+  try { await api("/api/entries", { method: "POST", body: JSON.stringify(f) }); ev.target.reset(); await load(); }
+  catch (err) { $("#error").textContent = err.message; }
+});
+
+$("#list").addEventListener("click", async (ev) => {
+  const c = ev.target.dataset.contacted, d = ev.target.dataset.delete;
+  try {
+    if (c) await api(`/api/entries/${c}/contacted`, { method: "POST" });
+    if (d) await api(`/api/entries/${d}`, { method: "DELETE" });
+    if (c || d) await load();
+  } catch (err) { $("#error").textContent = err.message; }
+});
+
+$("#tab-due").onclick = () => { dueOnly = true; $("#tab-due").classList.add("active"); $("#tab-all").classList.remove("active"); load(); };
+$("#tab-all").onclick = () => { dueOnly = false; $("#tab-all").classList.add("active"); $("#tab-due").classList.remove("active"); load(); };
+load();
+</script>
+</body>
+</html>
